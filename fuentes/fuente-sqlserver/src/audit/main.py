@@ -19,6 +19,7 @@ BQ_DATASET = os.environ["BQ_DATASET"]
 
 bq_client = bigquery.Client(project=PROJECT_ID)
 TABLE_ID = f"{PROJECT_ID}.{BQ_DATASET}.audit_log"
+print(TABLE_ID)
 
 
 @functions_framework.http
