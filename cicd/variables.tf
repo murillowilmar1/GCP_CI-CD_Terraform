@@ -29,5 +29,5 @@ variable "dev_branch" {
 variable "fuentes" {
   description = "Nombres de las carpetas bajo fuentes/ para las que crear un trigger de dev."
   type        = list(string)
-  default     = ["fuente-postgres", "fuente-sqlserver"]
+  default     = ["fuente-postgres", "fuente-sqlserver", "fuente-api"]
 }

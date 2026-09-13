@@ -1,0 +1,47 @@
+# Pipeline de DEV para fuente-api: se dispara solo con push a la rama `dev`
+# que toque fuentes/fuente-api/** (ver cicd/main.tf).
+#
+# No hay build-push-images acá: no se empaqueta ninguna imagen de
+# contenedor, el DAG es un .py que Terraform sube directo al bucket de
+# Composer (ver modules/composer-dag).
+#
+# ADVERTENCIA: el primer apply crea un entorno de Composer real (costo
+# continuo, 20-40 min para crearse). Ver infra/main.tf.
+
+steps:
+  - id: terraform-init
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-api/infra
+        terraform init -backend-config="bucket=${_TFSTATE_BUCKET}"
+
+  - id: terraform-plan
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-api/infra
+        terraform plan -var-file="../../../env/${_ENV}.tfvars" -out=tfplan
+
+  - id: terraform-apply
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-api/infra
+        terraform apply -auto-approve tfplan
+
+substitutions:
+  _TFSTATE_BUCKET: lakehouse-aw-dev-tfstate
+  _ENV: dev
+
+options:
+  logging: CLOUD_LOGGING_ONLY
