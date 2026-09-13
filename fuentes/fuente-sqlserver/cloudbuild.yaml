@@ -7,6 +7,12 @@
 #    La función de auditoría NO se construye acá: Terraform la empaqueta
 #    (zip) y despliega directo (ver modules/cloud-function).
 # 2) terraform init/plan/apply: 2 steps del mismo build, sin aprobación.
+#
+# Nota: toda variable de bash que NO sea una substitution de Cloud Build
+# (${_XXX}, $PROJECT_ID, $SHORT_SHA) va escapada como $$ — si no, Cloud
+# Build intenta resolverla como substitution propia y el build falla antes
+# de correr nada ("key in the template ... is not a valid built-in
+# substitution").
 
 steps:
   - id: build-push-images
@@ -18,17 +24,17 @@ steps:
         set -eu
         AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/multifuente"
         INFRA_DIR="fuentes/fuente-sqlserver/infra"
-        > "$INFRA_DIR/images.auto.tfvars"
+        > "$$INFRA_DIR/images.auto.tfvars"
 
         for stage in raw stage analytics; do
-          IMG="$AR/fuente-sqlserver-$stage:$SHORT_SHA"
-          docker build -f docker/job.Dockerfile -t "$IMG" "fuentes/fuente-sqlserver/src/$stage"
-          docker push "$IMG"
-          DIGEST=$(gcloud artifacts docker images describe "$IMG" --format='value(image_summary.digest)')
-          echo "${stage}_image = \"$AR/fuente-sqlserver-$stage@$DIGEST\"" >> "$INFRA_DIR/images.auto.tfvars"
+          IMG="$$AR/fuente-sqlserver-$$stage:$SHORT_SHA"
+          docker build -f docker/job.Dockerfile -t "$$IMG" "fuentes/fuente-sqlserver/src/$$stage"
+          docker push "$$IMG"
+          DIGEST=$$(gcloud artifacts docker images describe "$$IMG" --format='value(image_summary.digest)')
+          echo "$${stage}_image = \"$$AR/fuente-sqlserver-$$stage@$$DIGEST\"" >> "$$INFRA_DIR/images.auto.tfvars"
         done
 
-        cat "$INFRA_DIR/images.auto.tfvars"
+        cat "$$INFRA_DIR/images.auto.tfvars"
 
   - id: terraform-init
     name: hashicorp/terraform:1.9

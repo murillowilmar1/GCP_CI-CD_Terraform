@@ -5,12 +5,14 @@
 # Antes de correrlo: sincronizar la carpeta de la fuente de dev -> main
 # (git checkout dev -- fuentes/<fuente>) y pushear a main.
 #
-# 1) build-push-images: construye y sube la imagen de cada etapa que tenga
-#    job.py bajo fuentes/${_FUENTE}/src/* (se salta las que traen main.py,
-#    que son Cloud Functions y Terraform las empaqueta solo). Escribe los
-#    digests en infra/images.auto.tfvars.
-# 2) terraform plan: deja el plan (binario + texto legible) en GCS para que
-#    alguien lo revise antes de aprobar el apply (ver cloudbuild-apply.yaml).
+# Deja el plan (binario + texto legible) en GCS para que alguien lo revise
+# antes de aprobar el apply (ver cloudbuild-apply.yaml).
+#
+# Nota: toda variable de bash que NO sea una substitution de Cloud Build
+# (${_XXX}, $PROJECT_ID, $SHORT_SHA) va escapada como $$ — si no, Cloud
+# Build intenta resolverla como substitution propia y el build falla antes
+# de correr nada ("key in the template ... is not a valid built-in
+# substitution").
 
 steps:
   - id: build-push-images
@@ -22,21 +24,21 @@ steps:
         set -eu
         AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/multifuente"
         INFRA_DIR="fuentes/${_FUENTE}/infra"
-        > "$INFRA_DIR/images.auto.tfvars"
+        > "$$INFRA_DIR/images.auto.tfvars"
 
         for dir in fuentes/${_FUENTE}/src/*/; do
-          stage="$(basename "$dir")"
-          if [ ! -f "${dir}job.py" ]; then
+          stage="$$(basename "$$dir")"
+          if [ ! -f "$${dir}job.py" ]; then
             continue
           fi
-          IMG="$AR/${_FUENTE}-$stage:$SHORT_SHA"
-          docker build -f docker/job.Dockerfile -t "$IMG" "$dir"
-          docker push "$IMG"
-          DIGEST=$(gcloud artifacts docker images describe "$IMG" --format='value(image_summary.digest)')
-          echo "${stage}_image = \"$AR/${_FUENTE}-$stage@$DIGEST\"" >> "$INFRA_DIR/images.auto.tfvars"
+          IMG="$$AR/${_FUENTE}-$$stage:$SHORT_SHA"
+          docker build -f docker/job.Dockerfile -t "$$IMG" "$$dir"
+          docker push "$$IMG"
+          DIGEST=$$(gcloud artifacts docker images describe "$$IMG" --format='value(image_summary.digest)')
+          echo "$${stage}_image = \"$$AR/${_FUENTE}-$$stage@$$DIGEST\"" >> "$$INFRA_DIR/images.auto.tfvars"
         done
 
-        cat "$INFRA_DIR/images.auto.tfvars"
+        cat "$$INFRA_DIR/images.auto.tfvars"
 
   - id: terraform-init
     name: hashicorp/terraform:1.9
