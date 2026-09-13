@@ -37,6 +37,7 @@ locals {
     "serviceusage.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
+    "compute.googleapis.com",
     "storage.googleapis.com",
     "bigquery.googleapis.com",
     "dataproc.googleapis.com",
@@ -237,22 +238,30 @@ resource "google_project_iam_member" "compute_sa_cloudbuild_builder" {
   project = var.project_id
   role    = "roles/cloudbuild.builds.builder"
   member  = "serviceAccount:${local.default_compute_sa}"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_iam_member" "compute_sa_artifact_writer" {
   project = var.project_id
   role    = "roles/artifactregistry.writer"
   member  = "serviceAccount:${local.default_compute_sa}"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_iam_member" "compute_sa_logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${local.default_compute_sa}"
+
+  depends_on = [google_project_service.required]
 }
 
 resource "google_project_iam_member" "compute_sa_storage_viewer" {
   project = var.project_id
   role    = "roles/storage.objectViewer"
   member  = "serviceAccount:${local.default_compute_sa}"
+
+  depends_on = [google_project_service.required]
 }
