@@ -56,7 +56,13 @@ resource "google_developer_connect_connection" "github" {
     github_app = "DEVELOPER_CONNECT"
   }
 
-  depends_on = [google_project_iam_member.devconnect_secret_admin]
+  # Sin depends_on a propósito: el service agent de Developer Connect se
+  # crea recién como efecto secundario de esta MISMA conexión (no de
+  # habilitar la API sola), así que el permiso de abajo no puede ser
+  # prerequisito de esto — es al revés. En un proyecto nuevo, el primer
+  # apply puede fallar en devconnect_secret_admin ("service account does
+  # not exist") aunque este recurso sí se cree bien; un segundo apply lo
+  # resuelve porque para entonces la SA ya existe.
 }
 
 resource "google_developer_connect_git_repository_link" "repo" {
