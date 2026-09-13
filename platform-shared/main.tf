@@ -20,6 +20,10 @@ provider "google" {
   region  = var.region
 }
 
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
 locals {
   common_labels = merge(var.labels, {
     environment = var.environment
@@ -214,4 +218,41 @@ resource "google_project_iam_member" "pipeline_sa_dataproc_worker" {
   project = var.project_id
   role    = "roles/dataproc.worker"
   member  = "serviceAccount:${google_service_account.pipeline_sa.email}"
+}
+
+# ---------------------------------------------------------------------------
+# Cloud Functions 2nd gen usa, por defecto, la service account de Compute
+# por defecto del proyecto para su build interno (empaquetar el código en
+# una imagen). Esta organización tiene deshabilitado el otorgamiento
+# automático de roles a las service accounts por defecto, así que sin esto
+# el build de cualquier Cloud Function falla con "missing permission on the
+# build service account".
+# ---------------------------------------------------------------------------
+
+locals {
+  default_compute_sa = "${data.google_project.current.number}-compute@developer.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "compute_sa_cloudbuild_builder" {
+  project = var.project_id
+  role    = "roles/cloudbuild.builds.builder"
+  member  = "serviceAccount:${local.default_compute_sa}"
+}
+
+resource "google_project_iam_member" "compute_sa_artifact_writer" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${local.default_compute_sa}"
+}
+
+resource "google_project_iam_member" "compute_sa_logwriter" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${local.default_compute_sa}"
+}
+
+resource "google_project_iam_member" "compute_sa_storage_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:${local.default_compute_sa}"
 }
