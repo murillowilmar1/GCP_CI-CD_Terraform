@@ -2,6 +2,8 @@
 
 Corre como Cloud Run Job. Variables de entorno esperadas: RAW_BUCKET,
 SOURCE_NAME (inyectadas por fuentes/fuente-postgres/infra/main.tf).
+
+# test: push de prueba para disparar el pipeline de dev
 """
 
 import datetime
