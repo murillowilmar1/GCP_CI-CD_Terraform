@@ -42,6 +42,7 @@ locals {
     "developerconnect.googleapis.com",
     "artifactregistry.googleapis.com",
     "eventarc.googleapis.com",
+    "secretmanager.googleapis.com",
   ]
 }
 

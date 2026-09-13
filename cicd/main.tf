@@ -37,6 +37,16 @@ data "google_project" "current" {
 #      autorizada).
 # ---------------------------------------------------------------------------
 
+# El service agent de Developer Connect necesita crear/administrar un
+# secreto en Secret Manager para guardar el token de OAuth de GitHub tras
+# la autorización interactiva. Sin esto, el paso de autorización falla con
+# "could not create a secret: permission_denied".
+resource "google_project_iam_member" "devconnect_secret_admin" {
+  project = var.project_id
+  role    = "roles/secretmanager.admin"
+  member  = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-devconnect.iam.gserviceaccount.com"
+}
+
 resource "google_developer_connect_connection" "github" {
   project       = var.project_id
   location      = var.region
@@ -45,6 +55,8 @@ resource "google_developer_connect_connection" "github" {
   github_config {
     github_app = "DEVELOPER_CONNECT"
   }
+
+  depends_on = [google_project_iam_member.devconnect_secret_admin]
 }
 
 resource "google_developer_connect_git_repository_link" "repo" {
@@ -75,6 +87,23 @@ resource "google_service_account" "terraform_cicd" {
 resource "google_project_iam_member" "terraform_cicd_editor" {
   project = var.project_id
   role    = "roles/editor"
+  member  = "serviceAccount:${google_service_account.terraform_cicd.email}"
+}
+
+# Requerido para que la SA del trigger pueda leer el token de OAuth de
+# GitHub que administra Developer Connect (si no, la creación del trigger
+# falla con "insufficient permissions... to project").
+resource "google_project_iam_member" "terraform_cicd_devconnect_token" {
+  project = var.project_id
+  role    = "roles/developerconnect.readTokenAccessor"
+  member  = "serviceAccount:${google_service_account.terraform_cicd.email}"
+}
+
+# Requerido para que esta SA (no la de Cloud Build por defecto) pueda ser
+# usada como identidad de ejecución de un trigger/build.
+resource "google_project_iam_member" "terraform_cicd_builder" {
+  project = var.project_id
+  role    = "roles/cloudbuild.builds.builder"
   member  = "serviceAccount:${google_service_account.terraform_cicd.email}"
 }
 
