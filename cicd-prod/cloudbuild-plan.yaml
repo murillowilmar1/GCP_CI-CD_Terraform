@@ -33,8 +33,9 @@ steps:
           fi
           IMG="$$AR/${_FUENTE}-$$stage:$SHORT_SHA"
           docker build -f docker/job.Dockerfile -t "$$IMG" "$$dir"
-          docker push "$$IMG"
-          DIGEST=$$(gcloud artifacts docker images describe "$$IMG" --format='value(image_summary.digest)')
+          PUSH_OUT=$$(docker push "$$IMG")
+          echo "$$PUSH_OUT"
+          DIGEST=$$(echo "$$PUSH_OUT" | grep -oE 'sha256:[a-f0-9]+' | head -1)
           echo "$${stage}_image = \"$$AR/${_FUENTE}-$$stage@$$DIGEST\"" >> "$$INFRA_DIR/images.auto.tfvars"
         done
 

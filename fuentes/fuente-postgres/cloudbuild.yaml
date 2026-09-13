@@ -27,8 +27,9 @@ steps:
         for stage in raw stage analytics; do
           IMG="$$AR/fuente-postgres-$$stage:$SHORT_SHA"
           docker build -f docker/job.Dockerfile -t "$$IMG" "fuentes/fuente-postgres/src/$$stage"
-          docker push "$$IMG"
-          DIGEST=$$(gcloud artifacts docker images describe "$$IMG" --format='value(image_summary.digest)')
+          PUSH_OUT=$$(docker push "$$IMG")
+          echo "$$PUSH_OUT"
+          DIGEST=$$(echo "$$PUSH_OUT" | grep -oE 'sha256:[a-f0-9]+' | head -1)
           echo "$${stage}_image = \"$$AR/fuente-postgres-$$stage@$$DIGEST\"" >> "$$INFRA_DIR/images.auto.tfvars"
         done
 
