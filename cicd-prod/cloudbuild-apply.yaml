@@ -1,0 +1,50 @@
+# Pipeline paramétrico de promoción a prod - fase APPLY.
+# Se corre a mano DESPUÉS de revisar el plan (ver cloudbuild-plan.yaml):
+#   gcloud builds triggers run promote-apply --region=<region> \
+#     --branch=main --substitutions=_FUENTE=fuente-postgres
+#
+# El trigger tiene approval_config.approval_required=true: el build queda
+# pausado (ningún step corre, ni siquiera terraform-init) hasta que alguien
+# lo aprueba desde la consola o con `gcloud builds approve`.
+#
+# Aplica exactamente el plan generado en la fase PLAN (no vuelve a plan-ear),
+# para garantizar que lo aprobado es lo que efectivamente se aplica.
+
+steps:
+  - id: terraform-init
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd "fuentes/${_FUENTE}/infra"
+        terraform init -backend-config="bucket=${_TFSTATE_BUCKET}"
+
+  - id: download-plan
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        gcloud storage cp "gs://${_TFSTATE_BUCKET}/cicd-prod-plans/${_FUENTE}/tfplan" \
+          "fuentes/${_FUENTE}/infra/tfplan"
+
+  - id: terraform-apply
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd "fuentes/${_FUENTE}/infra"
+        terraform apply -auto-approve tfplan
+
+substitutions:
+  _FUENTE: CHANGE_ME
+  _TFSTATE_BUCKET: lakehouse-aw-prod-tfstate
+  _ENV: prod
+
+options:
+  logging: CLOUD_LOGGING_ONLY

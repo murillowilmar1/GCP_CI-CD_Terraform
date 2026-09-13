@@ -1,0 +1,82 @@
+# Pipeline paramétrico de promoción a prod - fase PLAN.
+# Se corre a mano: gcloud builds triggers run promote-plan --region=<region> \
+#   --branch=main --substitutions=_FUENTE=fuente-postgres
+#
+# Antes de correrlo: sincronizar la carpeta de la fuente de dev -> main
+# (git checkout dev -- fuentes/<fuente>) y pushear a main.
+#
+# 1) build-push-images: construye y sube la imagen de cada etapa que tenga
+#    job.py bajo fuentes/${_FUENTE}/src/* (se salta las que traen main.py,
+#    que son Cloud Functions y Terraform las empaqueta solo). Escribe los
+#    digests en infra/images.auto.tfvars.
+# 2) terraform plan: deja el plan (binario + texto legible) en GCS para que
+#    alguien lo revise antes de aprobar el apply (ver cloudbuild-apply.yaml).
+
+steps:
+  - id: build-push-images
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/multifuente"
+        INFRA_DIR="fuentes/${_FUENTE}/infra"
+        > "$INFRA_DIR/images.auto.tfvars"
+
+        for dir in fuentes/${_FUENTE}/src/*/; do
+          stage="$(basename "$dir")"
+          if [ ! -f "${dir}job.py" ]; then
+            continue
+          fi
+          IMG="$AR/${_FUENTE}-$stage:$SHORT_SHA"
+          docker build -f docker/job.Dockerfile -t "$IMG" "$dir"
+          docker push "$IMG"
+          DIGEST=$(gcloud artifacts docker images describe "$IMG" --format='value(image_summary.digest)')
+          echo "${stage}_image = \"$AR/${_FUENTE}-$stage@$DIGEST\"" >> "$INFRA_DIR/images.auto.tfvars"
+        done
+
+        cat "$INFRA_DIR/images.auto.tfvars"
+
+  - id: terraform-init
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd "fuentes/${_FUENTE}/infra"
+        terraform init -backend-config="bucket=${_TFSTATE_BUCKET}"
+
+  - id: terraform-plan
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd "fuentes/${_FUENTE}/infra"
+        terraform plan -var-file="../../../env/${_ENV}.tfvars" -out=tfplan
+        terraform show -no-color tfplan > tfplan.txt
+
+  - id: upload-plan
+    name: gcr.io/cloud-builders/gcloud
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd "fuentes/${_FUENTE}/infra"
+        gcloud storage cp tfplan     "gs://${_TFSTATE_BUCKET}/cicd-prod-plans/${_FUENTE}/tfplan"
+        gcloud storage cp tfplan.txt "gs://${_TFSTATE_BUCKET}/cicd-prod-plans/${_FUENTE}/tfplan.txt"
+        echo "Diff para revisar antes de aprobar el apply:"
+        echo "gs://${_TFSTATE_BUCKET}/cicd-prod-plans/${_FUENTE}/tfplan.txt"
+
+substitutions:
+  _FUENTE: CHANGE_ME
+  _TFSTATE_BUCKET: lakehouse-aw-prod-tfstate
+  _REGION: us-central1
+  _ENV: prod
+
+options:
+  logging: CLOUD_LOGGING_ONLY

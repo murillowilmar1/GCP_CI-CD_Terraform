@@ -1,0 +1,69 @@
+# Pipeline de DEV para fuente-sqlserver: se dispara solo con push a la rama
+# `dev` que toque fuentes/fuente-sqlserver/** (ver cicd/main.tf).
+#
+# 1) build-push-images: construye y sube a Artifact Registry la imagen de
+#    cada etapa (raw/stage/analytics), y escribe el digest resultante en
+#    infra/images.auto.tfvars (Terraform lo carga solo, sin -var-file).
+#    La función de auditoría NO se construye acá: Terraform la empaqueta
+#    (zip) y despliega directo (ver modules/cloud-function).
+# 2) terraform init/plan/apply: 2 steps del mismo build, sin aprobación.
+
+steps:
+  - id: build-push-images
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        AR="${_REGION}-docker.pkg.dev/$PROJECT_ID/multifuente"
+        INFRA_DIR="fuentes/fuente-sqlserver/infra"
+        > "$INFRA_DIR/images.auto.tfvars"
+
+        for stage in raw stage analytics; do
+          IMG="$AR/fuente-sqlserver-$stage:$SHORT_SHA"
+          docker build -f docker/job.Dockerfile -t "$IMG" "fuentes/fuente-sqlserver/src/$stage"
+          docker push "$IMG"
+          DIGEST=$(gcloud artifacts docker images describe "$IMG" --format='value(image_summary.digest)')
+          echo "${stage}_image = \"$AR/fuente-sqlserver-$stage@$DIGEST\"" >> "$INFRA_DIR/images.auto.tfvars"
+        done
+
+        cat "$INFRA_DIR/images.auto.tfvars"
+
+  - id: terraform-init
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-sqlserver/infra
+        terraform init -backend-config="bucket=${_TFSTATE_BUCKET}"
+
+  - id: terraform-plan
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-sqlserver/infra
+        terraform plan -var-file="../../../env/${_ENV}.tfvars" -out=tfplan
+
+  - id: terraform-apply
+    name: hashicorp/terraform:1.9
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        cd fuentes/fuente-sqlserver/infra
+        terraform apply -auto-approve tfplan
+
+substitutions:
+  _TFSTATE_BUCKET: lakehouse-aw-dev-tfstate
+  _REGION: us-central1
+  _ENV: dev
+
+options:
+  logging: CLOUD_LOGGING_ONLY
