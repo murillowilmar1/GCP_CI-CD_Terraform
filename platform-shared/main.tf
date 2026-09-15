@@ -223,6 +223,29 @@ resource "google_project_iam_member" "pipeline_sa_dataproc_worker" {
   member  = "serviceAccount:${google_service_account.pipeline_sa.email}"
 }
 
+# Requerido porque fuente-api usa pipeline_sa como service account de los
+# nodos/workers de su entorno de Composer (modules/composer-environment,
+# node_config.service_account). Sin esto, la creación del entorno falla
+# tarde (después de ~50 min) con "Failed to create environment, but no
+# error was surfaced... missing role roles/composer.worker".
+resource "google_project_iam_member" "pipeline_sa_composer_worker" {
+  project = var.project_id
+  role    = "roles/composer.worker"
+  member  = "serviceAccount:${google_service_account.pipeline_sa.email}"
+}
+
+# El mismo error de Composer también señaló que el Google APIs Service
+# Agent (cloudservices) no tiene Editor — otra consecuencia de que esta
+# organización deshabilitó el otorgamiento automático de roles a service
+# accounts por defecto.
+resource "google_project_iam_member" "cloudservices_sa_editor" {
+  project = var.project_id
+  role    = "roles/editor"
+  member  = "serviceAccount:${data.google_project.current.number}@cloudservices.gserviceaccount.com"
+
+  depends_on = [google_project_service.required]
+}
+
 # ---------------------------------------------------------------------------
 # Cloud Functions 2nd gen usa, por defecto, la service account de Compute
 # por defecto del proyecto para su build interno (empaquetar el código en
