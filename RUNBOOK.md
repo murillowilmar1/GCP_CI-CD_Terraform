@@ -314,7 +314,11 @@ gcloud builds approve <BUILD_ID> --project=<tu-proyecto-prod>
 
 **Antes de hacerlo**: un entorno de Composer corre 24/7 y genera costo
 continuo (no es serverless como el resto de este laboratorio), y tarda
-20-40 minutos en crearse. No lo actives sin querer asumir ese costo.
+**20 a 50+ minutos** en crearse — mucho más lento que cualquier otra cosa
+en este repo. Además, si falta el permiso `roles/composer.worker` (ver
+abajo), el error recién aparece **después de ~50 minutos**, no al
+principio — es, por lejos, la parte más lenta de iterar en todo este
+laboratorio.
 
 ```bash
 scripts/tf.sh cicd dev apply   # crea el trigger dev-fuente-api
@@ -322,6 +326,22 @@ scripts/tf.sh cicd dev apply   # crea el trigger dev-fuente-api
 
 Después, cualquier push a `fuentes/fuente-api/**` dispara el pipeline que
 crea el entorno de Composer real y sube el DAG.
+
+**El código de `platform-shared/main.tf` ya incluye todos los permisos que
+Composer necesita** (se descubrieron uno por uno la primera vez, cada
+descubrimiento costando una espera larga — ver tabla de errores abajo).
+Si estás reconstruyendo esto en un proyecto nuevo, esos permisos ya están
+en el código, no hace falta agregarlos a mano.
+
+### Apagar todo al terminar la práctica
+
+```bash
+scripts/tf.sh fuentes/fuente-api/infra dev destroy
+```
+
+Esto destruye el entorno de Composer (deja de generar costo) y el DAG
+subido. El trigger `dev-fuente-api` en sí no cuesta nada, se puede dejar
+o sacarlo de `cicd/variables.tf` → `var.fuentes` y volver a aplicar `cicd`.
 
 ---
 
@@ -340,4 +360,8 @@ escribís algo parecido desde cero.
 | `missing permission on the build service account` al desplegar una Cloud Function | La organización tiene deshabilitado el otorgamiento automático de roles a la SA default de Compute, y esa SA no tiene ningún permiso | `platform-shared/main.tf` (grants explícitos + habilita `compute.googleapis.com`) |
 | `Service account ...-compute@developer.gserviceaccount.com does not exist` | La SA default de Compute no existe hasta que se habilita `compute.googleapis.com` en el proyecto | `platform-shared/main.tf` (ya en `required_apis`) |
 | `Service account ...@gcp-sa-devconnect... does not exist` al aplicar `cicd`/`cicd-prod` en un proyecto nuevo | Ese service agent se crea recién como efecto secundario de la PRIMERA conexión de Developer Connect, no de habilitar la API sola — dependencia circular si el permiso depende de la conexión y la conexión depende del permiso | Se sacó el `depends_on` en `cicd*/main.tf`; si aparece este error, correr el `apply` una segunda vez alcanza |
+| `Environment variables [PROJECT_ID] may not be overridden` al crear un entorno de Composer | `PROJECT_ID` está reservado por Composer, no se puede usar como nombre de variable de entorno propia en `software_config.env_variables` | Renombrado a `BQ_PROJECT_ID` en `fuentes/fuente-api/infra/main.tf` y `src/dag.py` |
+| `missing required permissions: iam.serviceAccounts.getIamPolicy, setIamPolicy` al crear un entorno de Composer | Al service agent de Composer (`service-<NUM>@cloudcomposer-accounts.iam.gserviceaccount.com`) le falta `roles/composer.ServiceAgentV2Ext` | `platform-shared/main.tf` |
+| `Please enable all APIs Cloud Composer depends on: [container.googleapis.com]` | Composer 2 corre sobre GKE por detrás; falta esa API habilitada | `platform-shared/main.tf` (ya en `required_apis`) |
+| `Failed to create environment, but no error was surfaced... missing role roles/composer.worker` (aparece recién después de ~50 min) | La service account usada como `node_config.service_account` del entorno (acá: `pipeline_sa`) no tiene `roles/composer.worker` | `platform-shared/main.tf` |
 | El script `scripts/tf.sh` da "Permission denied" al clonar en Linux/Cloud Shell | Se perdió el bit ejecutable al versionar desde Windows | Ya corregido en el repo (`git update-index --chmod=+x`); si vuelve a pasar: `chmod +x scripts/tf.sh` |
