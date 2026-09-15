@@ -49,6 +49,7 @@ locals {
     "eventarc.googleapis.com",
     "secretmanager.googleapis.com",
     "composer.googleapis.com",
+    "container.googleapis.com",
   ]
 }
 
