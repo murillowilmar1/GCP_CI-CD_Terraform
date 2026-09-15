@@ -1,5 +1,6 @@
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl se versiona a propósito (fija la versión exacta de
+# cada provider por módulo/capa) — no lo ignores.
 *.tfstate
 *.tfstate.*
 crash.log
