@@ -24,10 +24,10 @@ module "composer" {
   service_account  = local.service_account
 
   env_variables = {
-    RAW_BUCKET   = local.raw_bucket
-    STAGE_BUCKET = local.stage_bucket
-    PROJECT_ID   = var.project_id
-    BQ_DATASET   = local.bq_dataset_id
+    RAW_BUCKET    = local.raw_bucket
+    STAGE_BUCKET  = local.stage_bucket
+    BQ_PROJECT_ID = var.project_id # "PROJECT_ID" está reservado por Composer, no se puede sobrescribir
+    BQ_DATASET    = local.bq_dataset_id
   }
 
   pypi_packages = {

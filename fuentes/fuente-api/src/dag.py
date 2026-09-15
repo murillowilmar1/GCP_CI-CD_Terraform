@@ -12,7 +12,9 @@ infra/main.tf, módulo composer-dag); Airflow lo recoge automáticamente,
 sin necesidad de reiniciar nada.
 
 Variables de entorno esperadas (inyectadas al entorno completo de Composer,
-ver infra/main.tf): RAW_BUCKET, STAGE_BUCKET, PROJECT_ID, BQ_DATASET.
+ver infra/main.tf): RAW_BUCKET, STAGE_BUCKET, BQ_PROJECT_ID, BQ_DATASET.
+("PROJECT_ID" a secas está reservado por Composer y no se puede
+sobrescribir como variable de entorno propia.)
 Opcionales: SOURCE_LAT, SOURCE_LON (default: Bogotá).
 """
 
@@ -28,7 +30,7 @@ from airflow.decorators import dag, task
 SOURCE_NAME = "fuente-api"
 RAW_BUCKET = os.environ["RAW_BUCKET"]
 STAGE_BUCKET = os.environ["STAGE_BUCKET"]
-PROJECT_ID = os.environ["PROJECT_ID"]
+PROJECT_ID = os.environ["BQ_PROJECT_ID"]
 BQ_DATASET = os.environ["BQ_DATASET"]
 
 
