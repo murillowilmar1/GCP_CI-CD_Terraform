@@ -1,4 +1,5 @@
-"""DAG de ejemplo para fuente-api: extrae de una API externa (simulada),
+"""DAG de ejemplo para fuente-api: extrae el pronóstico del clima de
+Open-Meteo (api.open-meteo.com — API pública real, gratis, sin API key),
 transforma y carga a BigQuery.
 
 A diferencia de fuente-postgres/fuente-sqlserver (3 Cloud Run Jobs
@@ -12,6 +13,7 @@ sin necesidad de reiniciar nada.
 
 Variables de entorno esperadas (inyectadas al entorno completo de Composer,
 ver infra/main.tf): RAW_BUCKET, STAGE_BUCKET, PROJECT_ID, BQ_DATASET.
+Opcionales: SOURCE_LAT, SOURCE_LON (default: Bogotá).
 """
 
 from __future__ import annotations
@@ -40,23 +42,42 @@ BQ_DATASET = os.environ["BQ_DATASET"]
 def fuente_api_pipeline():
     @task
     def extract() -> str:
-        """Extrae de la API externa.
-
-        TODO: reemplazar por la llamada real, ej:
-            import requests
-            resp = requests.get(os.environ["SOURCE_API_URL"], timeout=30)
-            resp.raise_for_status()
-            rows = resp.json()
-
-        Genera datos sintéticos mientras tanto, para poder correr el DAG
-        de punta a punta sin una API real conectada.
+        """Extrae el pronóstico horario de Open-Meteo (api.open-meteo.com) —
+        API pública real, sin API key ni registro. Coordenadas por defecto:
+        Bogotá. Cambiar LAT/LON o pasarlas por variable de entorno si se
+        quiere otra ciudad.
         """
+        import requests
         from google.cloud import storage
 
-        now = datetime.datetime.utcnow().isoformat()
+        lat = os.environ.get("SOURCE_LAT", "4.7110")
+        lon = os.environ.get("SOURCE_LON", "-74.0721")
+
+        resp = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "hourly": "temperature_2m,relative_humidity_2m,precipitation_probability",
+                "forecast_days": 1,
+                "timezone": "auto",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        hourly = data["hourly"]
         rows = [
-            {"id": i, "source": SOURCE_NAME, "extracted_at": now, "value": i * 30}
-            for i in range(1, 11)
+            {
+                "id": i,
+                "source": SOURCE_NAME,
+                "extracted_at": timestamp,
+                "temperature_c": hourly["temperature_2m"][i],
+                "humidity_pct": hourly["relative_humidity_2m"][i],
+                "precip_probability_pct": hourly["precipitation_probability"][i],
+            }
+            for i, timestamp in enumerate(hourly["time"])
         ]
 
         ts = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")

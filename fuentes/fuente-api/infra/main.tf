@@ -34,6 +34,7 @@ module "composer" {
     pandas                = ""
     pyarrow               = ""
     google-cloud-bigquery = ""
+    requests              = ""
   }
 
   labels = { fuente = local.source_name }

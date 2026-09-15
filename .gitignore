@@ -7,3 +7,4 @@ crash.*.log
 tfplan
 tfplan.txt
 .env
+__pycache__/
