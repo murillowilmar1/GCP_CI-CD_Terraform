@@ -47,3 +47,15 @@ module "dag" {
   dag_file_path  = "${path.module}/../src/dag.py"
   dag_file_name  = "fuente_api_pipeline.py"
 }
+
+# tasks.py tiene que subir a la MISMA carpeta dags/ que dag.py: es lo que
+# permite que dag.py haga "import tasks" (Python lo busca en el mismo
+# directorio). No es un DAG en sí — Airflow lo ignora como tal porque no
+# define ningún objeto @dag a nivel de módulo.
+module "tasks_module" {
+  source = "../../../modules/composer-dag"
+
+  dag_gcs_prefix = module.composer.dag_gcs_prefix
+  dag_file_path  = "${path.module}/../src/tasks.py"
+  dag_file_name  = "tasks.py"
+}
