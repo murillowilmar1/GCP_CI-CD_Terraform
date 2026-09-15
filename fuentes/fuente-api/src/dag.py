@@ -48,6 +48,11 @@ def fuente_api_pipeline():
         API pública real, sin API key ni registro. Coordenadas por defecto:
         Bogotá. Cambiar LAT/LON o pasarlas por variable de entorno si se
         quiere otra ciudad.
+
+        Guarda la respuesta de la API TAL CUAL la devuelve (sin parsear ni
+        reformatear nada) — ese es el contrato de la capa raw: una copia
+        fiel de lo que entregó la fuente, para poder reprocesar después sin
+        depender de la API si cambia o deja de estar disponible.
         """
         import requests
         from google.cloud import storage
@@ -67,38 +72,43 @@ def fuente_api_pipeline():
             timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
-
-        hourly = data["hourly"]
-        rows = [
-            {
-                "id": i,
-                "source": SOURCE_NAME,
-                "extracted_at": timestamp,
-                "temperature_c": hourly["temperature_2m"][i],
-                "humidity_pct": hourly["relative_humidity_2m"][i],
-                "precip_probability_pct": hourly["precipitation_probability"][i],
-            }
-            for i, timestamp in enumerate(hourly["time"])
-        ]
 
         ts = datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S")
         blob_path = f"{SOURCE_NAME}/raw_{ts}.json"
 
         client = storage.Client()
         client.bucket(RAW_BUCKET).blob(blob_path).upload_from_string(
-            "\n".join(json.dumps(r) for r in rows), content_type="application/json"
+            resp.text, content_type="application/json"
         )
         return blob_path
 
     @task
     def transform(raw_blob_path: str) -> str:
+        """Acá pasa la estructuración real: Open-Meteo devuelve los campos
+        como listas paralelas (data["hourly"]["temperature_2m"][i] va con
+        data["hourly"]["time"][i], etc.) — se "pivotea" eso a filas de una
+        tabla (una fila por hora, con sus columnas), que es el formato que
+        después carga BigQuery.
+        """
         import pandas as pd
         from google.cloud import storage
 
         client = storage.Client()
-        lines = client.bucket(RAW_BUCKET).blob(raw_blob_path).download_as_text().splitlines()
-        rows = [json.loads(line) for line in lines if line.strip()]
+        raw_text = client.bucket(RAW_BUCKET).blob(raw_blob_path).download_as_text()
+        data = json.loads(raw_text)
+
+        hourly = data["hourly"]
+        rows = [
+            {
+                "id": i,
+                "source": SOURCE_NAME,
+                "forecast_time": timestamp,
+                "temperature_c": hourly["temperature_2m"][i],
+                "humidity_pct": hourly["relative_humidity_2m"][i],
+                "precip_probability_pct": hourly["precipitation_probability"][i],
+            }
+            for i, timestamp in enumerate(hourly["time"])
+        ]
 
         df = pd.DataFrame(rows)
         df["processed_at"] = datetime.datetime.utcnow().isoformat()
