@@ -1,0 +1,117 @@
+// Diagrama "as code" para Eraser (app.eraser.io).
+// Cómo usarlo: Eraser -> New file -> "Diagram as code" -> tipo
+// "Cloud architecture diagram" -> pegar todo este contenido.
+//
+// Puntos clave que pediste que queden visibles:
+//  1) El state de Terraform está separado POR FUENTE dentro del mismo
+//     bucket (un prefijo/objeto distinto por capa: platform-shared, cicd,
+//     y uno por cada fuentes/<fuente>/infra).
+//  2) Cada objeto de state tiene su propio lock nativo del backend "gcs"
+//     (un archivo .tflock por prefijo) que impide que dos personas/CI
+//     apliquen al mismo tiempo sobre la misma fuente.
+//  3) El archivo .terraform.lock.hcl (versión exacta de cada provider) se
+//     versiona en git, por carpeta — visible en el repo, no ignorado.
+
+direction down
+
+GitHub [icon: github, label: "GitHub\nmurillowilmar1/GCP_CI-CD_Terraform\nramas: dev (trabajo diario) + main (prod)\n.terraform.lock.hcl versionado por carpeta"]
+
+DevConnectDev [icon: gcp-connectors, label: "Developer Connect\n(conexión GitHub - proyecto dev)"]
+DevConnectProd [icon: gcp-connectors, label: "Developer Connect\n(conexión GitHub - proyecto prod)"]
+
+GitHub > DevConnectDev: push a dev
+GitHub > DevConnectProd: main (solo lectura, se invoca a mano)
+
+ProjectDev [icon: gcp-cloud-platform, label: "Proyecto: lakehouse-adventureworks-dev"] {
+
+  CicdDev [icon: gcp-cloud-build, label: "cicd/ - triggers automáticos por fuente"] {
+    TriggerPostgres [icon: gcp-cloud-build, label: "trigger: dev-fuente-postgres\npath filter: fuentes/fuente-postgres/**"]
+    TriggerSqlserver [icon: gcp-cloud-build, label: "trigger: dev-fuente-sqlserver\npath filter: fuentes/fuente-sqlserver/**"]
+    TriggerApi [icon: gcp-cloud-build, label: "trigger: dev-fuente-api\npath filter: fuentes/fuente-api/**"]
+  }
+
+  TfStateDev [icon: gcp-cloud-storage, label: "gs://lakehouse-aw-dev-tfstate\n(bucket ÚNICO, state separado por prefijo)"] {
+    StateDevPlatform [icon: gcp-cloud-storage, label: "platform-shared/default.tfstate\n+ default.tflock"]
+    StateDevCicd [icon: gcp-cloud-storage, label: "cicd/default.tfstate\n+ default.tflock"]
+    StateDevPostgres [icon: gcp-cloud-storage, label: "fuentes/fuente-postgres/default.tfstate\n+ default.tflock"]
+    StateDevSqlserver [icon: gcp-cloud-storage, label: "fuentes/fuente-sqlserver/default.tfstate\n+ default.tflock"]
+    StateDevApi [icon: gcp-cloud-storage, label: "fuentes/fuente-api/default.tfstate\n+ default.tflock"]
+  }
+
+  PlatformSharedDev [icon: gcp-cloud-platform, label: "platform-shared"] {
+    BucketsDev [icon: gcp-cloud-storage, label: "raw / stage / analytics /\nquery-results"]
+    BqDev [icon: gcp-bigquery, label: "dataset: multifuente_catalog"]
+    ArDev [icon: gcp-artifact-registry, label: "repo: multifuente"]
+    SaDev [icon: gcp-identity-and-access-management, label: "pipeline_sa\n(shared)"]
+  }
+
+  RuntimeDev [icon: gcp-cloud-platform, label: "recursos de datos por fuente"] {
+    JobsPostgresDev [icon: gcp-cloud-run, label: "fuente-postgres\nraw / stage / analytics\n(Cloud Run Jobs)"]
+    JobsSqlserverDev [icon: gcp-cloud-run, label: "fuente-sqlserver\nraw / stage / analytics\n(Cloud Run Jobs)"]
+    FnSqlserverDev [icon: gcp-cloud-functions, label: "fuente-sqlserver-audit\n(Cloud Function)"]
+    ComposerApiDev [icon: gcp-cloud-composer, label: "fuente-api-dev\nDAG: extract > transform > load\n(Open-Meteo -> BigQuery)"]
+  }
+}
+
+ProjectProd [icon: gcp-cloud-platform, label: "Proyecto: lakehouse-adventureworks-prod"] {
+
+  CicdProd [icon: gcp-cloud-build, label: "cicd-prod/ - pipeline paramétrico (1 solo, no por fuente)"] {
+    TriggerPlan [icon: gcp-cloud-build, label: "trigger: promote-plan\nmanual, substitutions: _FUENTE"]
+    TriggerApply [icon: gcp-cloud-build, label: "trigger: promote-apply\nmanual + approval_config"]
+  }
+
+  TfStateProd [icon: gcp-cloud-storage, label: "gs://lakehouse-aw-prod-tfstate\n(bucket ÚNICO, state separado por prefijo)"] {
+    StateProdPlatform [icon: gcp-cloud-storage, label: "platform-shared/default.tfstate\n+ default.tflock"]
+    StateProdCicd [icon: gcp-cloud-storage, label: "cicd-prod/default.tfstate\n+ default.tflock"]
+    StateProdPostgres [icon: gcp-cloud-storage, label: "fuentes/fuente-postgres/default.tfstate\n+ default.tflock"]
+    StateProdSqlserver [icon: gcp-cloud-storage, label: "fuentes/fuente-sqlserver/default.tfstate\n+ default.tflock"]
+  }
+
+  PlatformSharedProd [icon: gcp-cloud-platform, label: "platform-shared"] {
+    BucketsProd [icon: gcp-cloud-storage, label: "raw / stage / analytics /\nquery-results"]
+    BqProd [icon: gcp-bigquery, label: "dataset: multifuente_catalog"]
+    ArProd [icon: gcp-artifact-registry, label: "repo: multifuente"]
+    SaProd [icon: gcp-identity-and-access-management, label: "pipeline_sa\n(shared)"]
+  }
+
+  RuntimeProd [icon: gcp-cloud-platform, label: "recursos de datos por fuente (promovidos)"] {
+    JobsPostgresProd [icon: gcp-cloud-run, label: "fuente-postgres\nraw / stage / analytics"]
+    JobsSqlserverProd [icon: gcp-cloud-run, label: "fuente-sqlserver\nraw / stage / analytics"]
+    FnSqlserverProd [icon: gcp-cloud-functions, label: "fuente-sqlserver-audit"]
+  }
+}
+
+DevConnectDev > TriggerPostgres
+DevConnectDev > TriggerSqlserver
+DevConnectDev > TriggerApi
+
+TriggerPostgres > StateDevPostgres: terraform plan/apply\n(lock automático mientras corre)
+TriggerSqlserver > StateDevSqlserver: terraform plan/apply
+TriggerApi > StateDevApi: terraform plan/apply
+
+TriggerPostgres > JobsPostgresDev: crea/actualiza
+TriggerSqlserver > JobsSqlserverDev: crea/actualiza
+TriggerSqlserver > FnSqlserverDev: crea/actualiza
+TriggerApi > ComposerApiDev: crea/actualiza
+
+SaDev > JobsPostgresDev: identidad de ejecución
+SaDev > JobsSqlserverDev: identidad de ejecución
+SaDev > ComposerApiDev: identidad de ejecución (roles/composer.worker)
+
+DevConnectProd > TriggerPlan: gcloud builds triggers run\n--substitutions=_FUENTE=<fuente>
+TriggerPlan > TriggerApply: aprobación manual\n(approval_config.approval_required)
+TriggerApply > StateProdPostgres: terraform apply\n(según _FUENTE elegido)
+TriggerApply > StateProdSqlserver: terraform apply\n(según _FUENTE elegido)
+TriggerApply > JobsPostgresProd: crea/actualiza
+TriggerApply > JobsSqlserverProd: crea/actualiza
+TriggerApply > FnSqlserverProd: crea/actualiza
+
+GitHub -- StateDevPlatform: .terraform.lock.hcl\n(versionado por carpeta)
+GitHub -- StateProdPlatform: .terraform.lock.hcl\n(versionado por carpeta)
+
+legend {
+  [color: blue, label: "Pipeline / CI-CD"]
+  [color: green, label: "State de Terraform (separado por fuente + lock)"]
+  [color: orange, label: "Recursos de datos (por fuente)"]
+  [connection: -->, label: "Relación de versionado (git)"]
+}
