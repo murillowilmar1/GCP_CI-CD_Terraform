@@ -48,6 +48,7 @@ locals {
     "artifactregistry.googleapis.com",
     "eventarc.googleapis.com",
     "secretmanager.googleapis.com",
+    "composer.googleapis.com",
   ]
 }
 
@@ -262,6 +263,21 @@ resource "google_project_iam_member" "compute_sa_storage_viewer" {
   project = var.project_id
   role    = "roles/storage.objectViewer"
   member  = "serviceAccount:${local.default_compute_sa}"
+
+  depends_on = [google_project_service.required]
+}
+
+# ---------------------------------------------------------------------------
+# Cloud Composer 2 necesita que su propio service agent tenga este rol para
+# poder administrar IAM sobre otras service accounts (workloads de GKE por
+# detrás). Sin esto, crear un entorno falla con "missing required
+# permissions: iam.serviceAccounts.getIamPolicy, setIamPolicy".
+# ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "composer_service_agent_ext" {
+  project = var.project_id
+  role    = "roles/composer.ServiceAgentV2Ext"
+  member  = "serviceAccount:service-${data.google_project.current.number}@cloudcomposer-accounts.iam.gserviceaccount.com"
 
   depends_on = [google_project_service.required]
 }
